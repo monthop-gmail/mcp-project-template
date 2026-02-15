@@ -2,8 +2,8 @@
 
 Template และ boilerplate สำหรับสร้าง MCP Server project ใหม่ (`xxx-mcp-claude`) ให้ใช้กับ Claude Code
 
-สรุป pattern จาก 11 MCP projects ที่มีอยู่:
-esxi, iot, chat, youtube, youtuber, audio, vdo, rag, odoo, samathi101, thudong
+สรุป pattern จาก 12 MCP projects ที่มีอยู่:
+esxi, iot, chat, youtube, youtuber, audio, vdo, rag, odoo, samathi101, thudong, transcript
 
 ## Files
 
@@ -28,6 +28,7 @@ esxi, iot, chat, youtube, youtuber, audio, vdo, rag, odoo, samathi101, thudong
 | 3010 | youtube-mcp-claude |
 | 3011 | audio-mcp-claude |
 | 3012 | vdo-mcp-claude |
+| 3013 | transcript-mcp-claude (All-in-One) |
 | 3020 | rag-mcp-claude |
 | 3030 | youtuber-mcp-claude |
 | 3100 | esxi-mcp-claude |

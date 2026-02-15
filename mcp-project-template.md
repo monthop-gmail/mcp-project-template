@@ -25,9 +25,10 @@
 | Port | Project | หมายเหตุ |
 |------|---------|----------|
 | 3001 | chat-mcp-claude | SQLite FTS5 |
-| 3010 | youtube-mcp-claude | yt-dlp, host mode |
-| 3011 | audio-mcp-claude | Whisper, host mode |
-| 3012 | vdo-mcp-claude | Whisper, host mode |
+| 3010 | youtube-mcp-claude | yt-dlp, host mode (แยก YouTube เท่านั้น) |
+| 3011 | audio-mcp-claude | Whisper, host mode (แยก Audio เท่านั้น) |
+| 3012 | vdo-mcp-claude | Whisper, host mode (แยก Video เท่านั้น) |
+| 3013 | transcript-mcp-claude | **All-in-One**: YouTube+Audio+Video+Translation+Subtitles+Batch (19 tools) |
 | 3020 | rag-mcp-claude | ChromaDB, host mode |
 | 3030 | youtuber-mcp-claude | YouTube API |
 | 3100 | esxi-mcp-claude | VMware ESXi |
@@ -53,10 +54,10 @@
 - **Validation**: `zod`
 - **Dockerfile**: Multi-stage build (builder + production)
 
-### Option B: JavaScript ES Modules (สำหรับ project ง่าย-กลาง 2-10 tools)
+### Option B: JavaScript ES Modules (สำหรับ project ง่าย-กลาง 2-10 tools, หรือ 10+ tools แบบ flat structure)
 
 ```
-ตัวอย่าง: chat-mcp-claude, youtube-mcp-claude, samathi101-mcp-claude
+ตัวอย่าง: chat-mcp-claude, youtube-mcp-claude, samathi101-mcp-claude, transcript-mcp-claude (19 tools)
 ```
 
 - **Runtime**: Node.js 22+
@@ -78,7 +79,7 @@
 ### Option D: Hybrid Python + Node.js (สำหรับ ML/AI workloads)
 
 ```
-ตัวอย่าง: audio-mcp-claude, vdo-mcp-claude
+ตัวอย่าง: audio-mcp-claude, vdo-mcp-claude, transcript-mcp-claude
 ```
 
 - **Runtime**: Python 3.12 + Node.js 22
