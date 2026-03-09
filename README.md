@@ -12,13 +12,14 @@ esxi, iot, chat, youtube, youtuber, audio, vdo, rag, odoo, samathi101, thudong, 
 | `mcp-project-template.md` | Prompt template - ใช้เป็น spec สำหรับสั่ง Claude Code สร้าง project ใหม่ (port convention, tech stack, โครงสร้าง, build order, checklist) |
 | `boilerplate-typescript.md` | Code boilerplate สำหรับ TypeScript project (10+ tools) - package.json, tsconfig, config, tools, index, server-sse, Dockerfile multi-stage, docker-compose, cache |
 | `boilerplate-javascript.md` | Code boilerplate สำหรับ JavaScript project (2-10 tools) - single-stage Dockerfile, simpler structure |
+| `boilerplate-python.md` | Code boilerplate สำหรับ Python project - pyproject.toml, Starlette + Uvicorn, StreamableHTTPSessionManager, service layer pattern |
 
 ## วิธีใช้
 
 1. Copy `mcp-project-template.md` ไปเป็น prompt spec ของ project ใหม่
 2. แก้ `xxx` เป็นชื่อ project, เติม tools, เลือก port ที่ว่าง
 3. สั่ง Claude Code ให้อ่าน prompt spec แล้วสร้าง project ตาม template
-4. Claude Code จะอ้างอิง boilerplate เพื่อสร้างไฟล์ตาม pattern เดียวกันทุก project
+4. Claude Code จะอ้างอิง boilerplate (TypeScript / JavaScript / Python) เพื่อสร้างไฟล์ตาม pattern เดียวกันทุก project
 
 ## Port Convention (ที่ใช้แล้ว)
 
