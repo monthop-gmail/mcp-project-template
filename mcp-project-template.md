@@ -24,17 +24,19 @@
 
 | Port | Project | หมายเหตุ |
 |------|---------|----------|
+| 3000 | samathi101-mcp-claude | Web scraping, _next/data API |
 | 3001 | chat-mcp-claude | SQLite FTS5 |
-| 3010 | youtube-mcp-claude | yt-dlp, host mode (แยก YouTube เท่านั้น) |
-| 3011 | audio-mcp-claude | Whisper, host mode (แยก Audio เท่านั้น) |
-| 3012 | vdo-mcp-claude | Whisper, host mode (แยก Video เท่านั้น) |
+| ~~3010~~ | ~~youtube-mcp-claude~~ | *รวมเข้า transcript แล้ว (-obs)* |
+| ~~3011~~ | ~~audio-mcp-claude~~ | *รวมเข้า transcript แล้ว (-obs)* |
+| ~~3012~~ | ~~vdo-mcp-claude~~ | *รวมเข้า transcript แล้ว (-obs)* |
 | 3013 | transcript-mcp-claude | **All-in-One**: YouTube+Audio+Video+Translation+Subtitles+Batch (19 tools) |
-| 3020 | rag-mcp-claude | ChromaDB, host mode |
+| 3020 | line-oa-mcp-claude | LINE OA Messaging API |
 | 3030 | youtuber-mcp-claude | YouTube API |
-| 3100 | esxi-mcp-claude | VMware ESXi |
+| ~~3100~~ | ~~esxi-mcp-claude~~ | *ย้ายไป obs แล้ว (-obs)* |
 | 3200 | thudong-mcp-claude | Survey RAG |
 | 3300 | iot-mcp-claude | IoT + VPN |
 | 8000 | odoo-mcp-claude | Python, Odoo ERP |
+| 8100 | rag-mcp-claude | ChromaDB, host mode |
 | **[ถัดไป]** | **xxx-mcp-claude** | **[เลือก port ที่ว่าง]** |
 
 ---
@@ -44,7 +46,7 @@
 ### Option A: TypeScript (แนะนำสำหรับ project ซับซ้อน 10+ tools)
 
 ```
-ตัวอย่าง: esxi-mcp-claude, iot-mcp-claude, youtuber-mcp-claude
+ตัวอย่าง: iot-mcp-claude, youtuber-mcp-claude, line-oa-mcp-claude
 ```
 
 - **Runtime**: Node.js 22+
@@ -57,7 +59,7 @@
 ### Option B: JavaScript ES Modules (สำหรับ project ง่าย-กลาง 2-10 tools, หรือ 10+ tools แบบ flat structure)
 
 ```
-ตัวอย่าง: chat-mcp-claude, youtube-mcp-claude, samathi101-mcp-claude, transcript-mcp-claude (19 tools)
+ตัวอย่าง: chat-mcp-claude, samathi101-mcp-claude, thudong-mcp-claude, transcript-mcp-claude (19 tools)
 ```
 
 - **Runtime**: Node.js 22+
@@ -79,7 +81,7 @@
 ### Option D: Hybrid Python + Node.js (สำหรับ ML/AI workloads)
 
 ```
-ตัวอย่าง: audio-mcp-claude, vdo-mcp-claude, transcript-mcp-claude
+ตัวอย่าง: transcript-mcp-claude (Whisper + Node.js MCP)
 ```
 
 - **Runtime**: Python 3.12 + Node.js 22
