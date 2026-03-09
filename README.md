@@ -39,8 +39,8 @@ esxi, iot, chat, youtube, youtuber, audio, vdo, rag, odoo, samathi101, thudong, 
 ## Common Pattern
 
 ทุก project ใช้ pattern เดียวกัน:
-- **Dual transport**: stdio (`index.ts/js`) + SSE (`server-sse.ts/js`)
-- **Docker**: SSE mode, unique port, healthcheck `/health`
-- **Claude Code**: `.mcp.json` ชี้ไป `http://localhost:PORT/sse`
+- **Dual transport**: stdio (`index.ts/js`) + Streamable HTTP (`server-sse.ts/js`)
+- **Docker**: Streamable HTTP mode, unique port, healthcheck `/health`
+- **Claude Code**: `.mcp.json` ชี้ไป `http://localhost:PORT/mcp`
 - **Restart**: `unless-stopped`
 - **Logging**: stderr (stdout สงวนสำหรับ MCP protocol)

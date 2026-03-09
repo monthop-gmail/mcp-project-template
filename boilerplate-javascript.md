@@ -16,7 +16,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "sse": "node src/server-sse.js"
+    "start:sse": "node src/server-sse.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
@@ -79,54 +79,61 @@ main().catch((err) => {
 
 ---
 
-## 3. src/server-sse.js (SSE/Docker)
+## 3. src/server-sse.js (Streamable HTTP/Docker)
 
 ```javascript
 #!/usr/bin/env node
 import http from 'http';
+import crypto from 'crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { TOOLS, handleToolCall } from './tools.js';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
-const mcpServer = new Server(
-  { name: 'xxx-mcp-claude', version: '1.0.0' },
-  { capabilities: { tools: {} } }
-);
+function createMCPServer() {
+  const mcpServer = new Server(
+    { name: 'xxx-mcp-claude', version: '1.0.0' },
+    { capabilities: { tools: {} } }
+  );
 
-mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: TOOLS,
-}));
+  mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: TOOLS,
+  }));
 
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  try {
-    const result = await handleToolCall(name, args || {});
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    };
-  } catch (error) {
-    return {
-      content: [
-        { type: 'text', text: JSON.stringify({ error: error.message }, null, 2) },
-      ],
-      isError: true,
-    };
-  }
-});
+  mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    try {
+      const result = await handleToolCall(name, args || {});
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          { type: 'text', text: JSON.stringify({ error: error.message }, null, 2) },
+        ],
+        isError: true,
+      };
+    }
+  });
 
-const connections = new Map();
+  return mcpServer;
+}
+
+const transports = new Map();
 
 const httpServer = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id');
+  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
@@ -138,38 +145,76 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/sse') {
-    const transport = new SSEServerTransport('/message', res);
-    const sessionId = crypto.randomUUID();
-    connections.set(sessionId, transport);
-    res.on('close', () => connections.delete(sessionId));
-    await mcpServer.connect(transport);
-    return;
-  }
+  if (url.pathname === '/mcp') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const jsonBody = JSON.parse(body);
+          const sessionId = req.headers['mcp-session-id'];
+          let transport;
 
-  if (url.pathname === '/message' && req.method === 'POST') {
-    let body = '';
-    req.on('data', (chunk) => { body += chunk; });
-    req.on('end', async () => {
-      try {
-        for (const transport of connections.values()) {
-          await transport.handlePostMessage(req, res, body);
-          return;
+          if (sessionId && transports.has(sessionId)) {
+            transport = transports.get(sessionId);
+          } else if (!sessionId && isInitializeRequest(jsonBody)) {
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => crypto.randomUUID(),
+              onsessioninitialized: (sid) => { transports.set(sid, transport); },
+            });
+            transport.onclose = () => {
+              const sid = transport.sessionId;
+              if (sid) transports.delete(sid);
+            };
+            const server = createMCPServer();
+            await server.connect(transport);
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Bad request: no session ID or not an initialize request' }));
+            return;
+          }
+          await transport.handleRequest(req, res, jsonBody);
+        } catch (err) {
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: String(err) }));
+          }
         }
-        res.writeHead(404); res.end(JSON.stringify({ error: 'No active SSE connection' }));
-      } catch (err) {
-        res.writeHead(500); res.end(JSON.stringify({ error: String(err) }));
+      });
+      return;
+    }
+
+    if (req.method === 'GET') {
+      const sessionId = req.headers['mcp-session-id'];
+      const transport = sessionId && transports.get(sessionId);
+      if (transport) {
+        await transport.handleRequest(req, res);
+      } else {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid or missing session ID' }));
       }
-    });
-    return;
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      const sessionId = req.headers['mcp-session-id'];
+      const transport = sessionId && transports.get(sessionId);
+      if (transport) {
+        await transport.handleRequest(req, res);
+      } else {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid or missing session ID' }));
+      }
+      return;
+    }
   }
 
   res.writeHead(404); res.end(JSON.stringify({ error: 'Not found' }));
 });
 
 httpServer.listen(PORT, HOST, () => {
-  console.log(`xxx MCP Server (SSE) at http://${HOST}:${PORT}`);
-  console.log(`  SSE: /sse | Health: /health | Tools: ${TOOLS.length}`);
+  console.log(`xxx MCP Server (Streamable HTTP) at http://${HOST}:${PORT}`);
+  console.log(`  MCP: /mcp | Health: /health | Tools: ${TOOLS.length}`);
 });
 ```
 
@@ -265,7 +310,8 @@ services:
 {
   "mcpServers": {
     "xxx": {
-      "url": "http://localhost:XXXX/sse"
+      "type": "streamable-http",
+      "url": "http://localhost:XXXX/mcp"
     }
   }
 }

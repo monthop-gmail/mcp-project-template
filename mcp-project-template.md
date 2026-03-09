@@ -97,7 +97,7 @@
 xxx-mcp-claude/
 ├── src/
 │   ├── index.ts                    # MCP server entry point (stdio)
-│   ├── server-sse.ts               # MCP server SSE mode (Docker)
+│   ├── server-sse.ts               # MCP server Streamable HTTP mode (Docker)
 │   ├── config.ts                   # Configuration & environment variables
 │   ├── tools/
 │   │   ├── index.ts                # TOOLS[] array + handleToolCall() dispatcher
@@ -134,7 +134,7 @@ xxx-mcp-claude/
 xxx-mcp-claude/
 ├── src/
 │   ├── index.js                    # MCP server (stdio)
-│   ├── server-sse.js               # MCP server (SSE/Docker)
+│   ├── server-sse.js               # MCP server (Streamable HTTP/Docker)
 │   ├── config.js                   # Configuration
 │   └── [domain].js                 # Business logic + tools
 ├── data/
@@ -199,10 +199,10 @@ DB_PATH=./data/app.db
 3. **Caching**: cache ผลลัพธ์ใน SQLite ถ้า API มี rate limit (TTL configurable)
 4. **Rate Limiting**: track API quota usage (ถ้า API มี daily limit)
 5. **Logging**: log ทุก API call ไปที่ stderr (stdout สงวนสำหรับ MCP protocol)
-6. **Dual Transport**: ต้องมีทั้ง stdio (index.ts) และ SSE (server-sse.ts)
-7. **Health Check**: SSE server ต้องมี `/health` endpoint
-8. **Docker**: ใช้ SSE mode, port mapping ตาม convention
-9. **Claude Code**: ตั้งค่า `.mcp.json` ชี้ไป `http://localhost:PORT/sse`
+6. **Dual Transport**: ต้องมีทั้ง stdio (index.ts) และ Streamable HTTP (server-sse.ts)
+7. **Health Check**: HTTP server ต้องมี `/health` endpoint
+8. **Docker**: ใช้ Streamable HTTP mode, port mapping ตาม convention
+9. **Claude Code**: ตั้งค่า `.mcp.json` ชี้ไป `http://localhost:PORT/mcp`
 10. **TypeScript Strict Mode**: เปิด strict mode (ถ้าใช้ TypeScript)
 
 ---

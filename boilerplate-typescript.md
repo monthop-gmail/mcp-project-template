@@ -86,10 +86,10 @@ export const config = {
     key: process.env.API_KEY || '',
     // endpoint: process.env.API_ENDPOINT || '',
   },
-  // === SSE server config ===
-  sse: {
-    host: process.env.SSE_HOST || '0.0.0.0',
-    port: parseInt(process.env.SSE_PORT || '3000', 10),
+  // === HTTP server config ===
+  http: {
+    host: process.env.HTTP_HOST || '0.0.0.0',
+    port: parseInt(process.env.HTTP_PORT || '3000', 10),
   },
   // === Cache config (ถ้ามี) ===
   // cache: {
@@ -256,16 +256,18 @@ main().catch((error) => {
 
 ---
 
-## 8. src/server-sse.ts (SSE Entry Point for Docker)
+## 8. src/server-sse.ts (Streamable HTTP Entry Point for Docker)
 
 ```typescript
 #!/usr/bin/env node
 import http from 'http';
+import crypto from 'crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import { config, validateConfig } from './config.js';
 import { TOOLS, handleToolCall } from './tools/index.js';
@@ -279,46 +281,50 @@ try {
   process.exit(1);
 }
 
-// Create MCP server
-const mcpServer = new Server(
-  { name: 'xxx-mcp-claude', version: '1.0.0' },
-  { capabilities: { tools: {} } }
-);
+// Factory: create MCP server instance per session
+function createMCPServer(): Server {
+  const mcpServer = new Server(
+    { name: 'xxx-mcp-claude', version: '1.0.0' },
+    { capabilities: { tools: {} } }
+  );
 
-// Register handlers (เหมือน index.ts)
-mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
-  return { tools: TOOLS };
-});
+  mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+    return { tools: TOOLS };
+  });
 
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  log('info', `Tool called: ${name}`);
+  mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    log('info', `Tool called: ${name}`);
 
-  try {
-    const result = await handleToolCall(name, args || {});
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log('error', `Tool error: ${name}`, { error: errorMessage });
-    return {
-      content: [
-        { type: 'text', text: JSON.stringify({ error: errorMessage }, null, 2) },
-      ],
-      isError: true,
-    };
-  }
-});
+    try {
+      const result = await handleToolCall(name, args || {});
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log('error', `Tool error: ${name}`, { error: errorMessage });
+      return {
+        content: [
+          { type: 'text', text: JSON.stringify({ error: errorMessage }, null, 2) },
+        ],
+        isError: true,
+      };
+    }
+  });
 
-// SSE connections
-const connections = new Map<string, SSEServerTransport>();
+  return mcpServer;
+}
+
+// Session transports
+const transports = new Map<string, StreamableHTTPServerTransport>();
 
 // HTTP Server
 const httpServer = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id');
+  res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -335,45 +341,80 @@ const httpServer = http.createServer(async (req, res) => {
       status: 'ok',
       server: 'xxx-mcp-claude',
       tools: TOOLS.length,
-      connections: connections.size,
+      sessions: transports.size,
     }));
     return;
   }
 
-  // SSE endpoint
-  if (url.pathname === '/sse') {
-    const transport = new SSEServerTransport('/message', res);
-    const sessionId = crypto.randomUUID();
-    connections.set(sessionId, transport);
-    log('info', `SSE connected: ${sessionId}`);
+  // Streamable HTTP endpoint
+  if (url.pathname === '/mcp') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          const jsonBody = JSON.parse(body);
+          const sessionId = req.headers['mcp-session-id'] as string;
+          let transport: StreamableHTTPServerTransport;
 
-    res.on('close', () => {
-      connections.delete(sessionId);
-      log('info', `SSE disconnected: ${sessionId}`);
-    });
-
-    await mcpServer.connect(transport);
-    return;
-  }
-
-  // Message endpoint
-  if (url.pathname === '/message' && req.method === 'POST') {
-    let body = '';
-    req.on('data', (chunk) => { body += chunk; });
-    req.on('end', async () => {
-      try {
-        for (const transport of connections.values()) {
-          await transport.handlePostMessage(req, res, body);
-          return;
+          if (sessionId && transports.has(sessionId)) {
+            transport = transports.get(sessionId)!;
+          } else if (!sessionId && isInitializeRequest(jsonBody)) {
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => crypto.randomUUID(),
+              onsessioninitialized: (sid) => {
+                transports.set(sid, transport);
+                log('info', `Session created: ${sid}`);
+              },
+            });
+            transport.onclose = () => {
+              const sid = transport.sessionId;
+              if (sid) {
+                transports.delete(sid);
+                log('info', `Session closed: ${sid}`);
+              }
+            };
+            const server = createMCPServer();
+            await server.connect(transport);
+          } else {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Bad request: no session ID or not an initialize request' }));
+            return;
+          }
+          await transport.handleRequest(req, res, jsonBody);
+        } catch (error) {
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: String(error) }));
+          }
         }
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'No active SSE connection' }));
-      } catch (error) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(error) }));
+      });
+      return;
+    }
+
+    if (req.method === 'GET') {
+      const sessionId = req.headers['mcp-session-id'] as string;
+      const transport = sessionId ? transports.get(sessionId) : undefined;
+      if (transport) {
+        await transport.handleRequest(req, res);
+      } else {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid or missing session ID' }));
       }
-    });
-    return;
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      const sessionId = req.headers['mcp-session-id'] as string;
+      const transport = sessionId ? transports.get(sessionId) : undefined;
+      if (transport) {
+        await transport.handleRequest(req, res);
+      } else {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid or missing session ID' }));
+      }
+      return;
+    }
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -385,11 +426,11 @@ process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
 // Start
-httpServer.listen(config.sse.port, config.sse.host, () => {
-  log('info', `xxx MCP Server (SSE) at http://${config.sse.host}:${config.sse.port}`);
-  console.log(`xxx MCP Server (SSE) running at http://${config.sse.host}:${config.sse.port}`);
-  console.log(`  SSE:    http://${config.sse.host}:${config.sse.port}/sse`);
-  console.log(`  Health: http://${config.sse.host}:${config.sse.port}/health`);
+httpServer.listen(config.http.port, config.http.host, () => {
+  log('info', `xxx MCP Server (Streamable HTTP) at http://${config.http.host}:${config.http.port}`);
+  console.log(`xxx MCP Server (Streamable HTTP) at http://${config.http.host}:${config.http.port}`);
+  console.log(`  MCP:    http://${config.http.host}:${config.http.port}/mcp`);
+  console.log(`  Health: http://${config.http.host}:${config.http.port}/health`);
   console.log(`  Tools:  ${TOOLS.length} registered`);
 });
 ```
@@ -454,8 +495,8 @@ services:
     environment:
       - API_KEY=${API_KEY}
       # เพิ่ม env vars ตามต้องการ
-      - SSE_HOST=0.0.0.0
-      - SSE_PORT=3000
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=3000
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
       interval: 30s
@@ -505,7 +546,8 @@ volumes:
 {
   "mcpServers": {
     "xxx": {
-      "url": "http://localhost:XXXX/sse"
+      "type": "streamable-http",
+      "url": "http://localhost:XXXX/mcp"
     }
   }
 }
@@ -552,8 +594,8 @@ scripts
 API_KEY=your_api_key
 
 # === Optional ===
-SSE_HOST=0.0.0.0
-SSE_PORT=3000
+HTTP_HOST=0.0.0.0
+HTTP_PORT=3000
 CACHE_TTL_SECONDS=300
 ```
 
@@ -624,6 +666,6 @@ export function closeCache(): void {
 - [ ] `.env` ตั้งค่าครบ
 - [ ] `docker compose up -d --build` สำเร็จ
 - [ ] `curl http://localhost:XXXX/health` ตอบ `{"status":"ok"}`
-- [ ] `.mcp.json` port ตรงกับ docker-compose.yml
+- [ ] `.mcp.json` port ตรงกับ docker-compose.yml, URL ชี้ `/mcp`
 - [ ] เปิด Claude Code ใน project directory แล้วเห็น MCP tools
 - [ ] ทดสอบเรียก tool อย่างน้อย 1 ตัว
